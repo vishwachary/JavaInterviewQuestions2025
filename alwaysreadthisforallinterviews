@@ -1,0 +1,100 @@
+Java Performance Interview Prep – Real Scenarios with Fixes
+
+In senior interviews, you’re often asked to debug performance bottlenecks in real-world systems.
+Here’s a set of 5 practical scenarios with examples + solutions 👇
+
+
+🔹 Scenario 1 – Slow SQL Queries
+❌ Problem: Dashboard takes 10s to load due to full table scans.
+
+-- Bad: full scan on large table
+SELECT * FROM transactions WHERE user_id = 123;
+
+✅ Fix: Add an index + fetch only required columns with pagination.
+
+CREATE INDEX idx_user_id ON transactions(user_id);
+
+SELECT txn_id, amount, status 
+FROM transactions 
+WHERE user_id = 123 LIMIT 20 OFFSET 0;
+
+📌 Impact: Query response time reduced from 10s → <100ms.
+
+
+
+🔹 Scenario 2 – Memory Leak in Microservice
+❌ Problem: Service crashes with OutOfMemoryError after 5 hours. Heap dump shows open file handles.
+
+// Bad: never closed
+BufferedReader br = new BufferedReader(new FileReader("data.txt"));
+String line = br.readLine();
+
+✅ Fix: Use try-with-resources to auto-close streams.
+
+try (BufferedReader br = new BufferedReader(new FileReader("data.txt"))) {
+ String line = br.readLine();
+}
+
+📌 Impact: No memory leaks → stable uptime.
+
+
+
+🔹 Scenario 3 – High Latency in API
+❌ Problem: Checkout API takes 3s during peak load.
+Cause: sequential DB + service calls.
+
+// Bad: sequential
+User user = userService.getUser(id);
+Orders orders = orderService.getOrders(id);
+
+✅ Fix: Use CompletableFuture to parallelize.
+
+CompletableFuture<User> user = supplyAsync(() -> userService.getUser(id));
+CompletableFuture<Orders> orders = supplyAsync(() -> orderService.getOrders(id));
+CompletableFuture.allOf(user, orders).join();
+
+📌 Impact: Latency reduced 3s → ~1.2s under load.
+
+
+
+🔹 Scenario 4 – GC (Garbage Collection) Pauses
+❌ Problem: High CPU + GC logs show frequent Full GCs.
+Cause: too many short-lived objects.
+
+✅ Fix:
+
+Use object pooling for frequently used objects.
+
+Switch from Parallel GC → G1GC for lower pause times.
+
+
+-XX:+UseG1GC -XX:MaxGCPauseMillis=200
+
+📌 Impact: Pause time reduced 800ms → <150ms.
+
+
+
+🔹 Scenario 5 – N+1 Query Problem
+❌ Problem: Fetching users with orders → 1 query for users + 1 query per user (total 1001 queries).
+
+// Bad: N+1 issue
+List<User> users = userRepo.findAll();
+for (User u : users) {
+ u.getOrders().size(); // triggers extra query per user
+}
+
+✅ Fix: Use JOIN FETCH or batch fetching.
+
+@Query("SELECT u FROM User u JOIN FETCH u.orders")
+List<User> findAllWithOrders();
+
+📌 Impact: Reduced DB calls 1001 → 1.
+
+
+
+💡 Interview Tip
+Always answer in 3 steps:
+1️⃣ How you detected the issue (profilers, heap dump, slow query log, metrics).
+2️⃣ Root cause (bad query, GC, memory leak).
+3️⃣ Fix + measurable impact (before vs after).
+
